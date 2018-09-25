@@ -3,9 +3,15 @@
 
 from setuptools import setup, find_packages
 
+import versioneer
+
+version = versioneer.get_versions()["version"]
+cmdclass = versioneer.get_cmdclass()
+
 setup(
     name='graphwatch',
-    version="0.0.2",
+    cmdclass=cmdclass,
+    version=version,
     author="Samuel Loury",
     author_email="konubinixweb@gmail.com",
     description="A web app showing a dot graph evolutions.",
