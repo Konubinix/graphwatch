@@ -270,7 +270,7 @@ overflow:scroll;
             if cg == (gl - 1):
                 self.set_current_graph(cg + 1)
 
-        asyncio.get_event_loop().call_later(1, self.refresh)
+        asyncio.get_event_loop().call_later(0.1, self.refresh)
 
     @flx.reaction("graph_list", "current_graph")
     def _update_buttons(self, *evs):
