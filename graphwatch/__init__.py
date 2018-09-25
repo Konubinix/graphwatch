@@ -4,8 +4,5 @@
 from graphwatch.graphwatch import main
 
 from ._version import get_versions
-import ipdb
-ipdb.set_trace()
-
 __version__ = get_versions()['version']
 del get_versions
