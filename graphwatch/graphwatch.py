@@ -21,6 +21,8 @@ config.tornado_debug = True
 class VisJS(flx.Widget):
     def init(self):
         window.igraph = self
+        self.restore_nodes_fct = None
+        self.restore_nodes_timeout = None
 
     @event.action
     def update_viz(self, data):
@@ -44,10 +46,21 @@ class VisJS(flx.Widget):
                 }
                 for node in data["nodes"]["update"]
             ]
+
             self.nodes.update(updated_nodes)
+
             def restore_nodes(original):
-                self.nodes.update(original)
-            window.setTimeout(restore_nodes, 2000, original_nodes)
+                def doit():
+                    self.nodes.update(original)
+                    self.restore_nodes_fct = None
+                    self.restore_nodes_timeout = None
+                return doit
+
+            if self.restore_nodes_timeout is not None:
+                clearTimeout(self.restore_nodes_timeout)
+                self.restore_nodes_fct()
+            self.restore_nodes_fct = restore_nodes(original_nodes)
+            self.restore_nodes_timeout = window.setTimeout(self.restore_nodes_fct, 2000)
         if data["edges"]["add"]:
             self.edges.add(data["edges"]["add"])
         if data["edges"]["remove"]:
