@@ -23,9 +23,13 @@ class VisJS(flx.Widget):
         window.igraph = self
         self.restore_nodes_fct = None
         self.restore_nodes_timeout = None
+        self.restore_edges_fct = None
+        self.restore_edges_timeout = None
 
     @event.action
     def update_viz(self, data):
+        colorize_updated_edges = False
+        colorize_updated_nodes = False
         if data["nodes"]["add"]:
             self.nodes.add(data["nodes"]["add"])
         if data["nodes"]["remove"]:
@@ -34,7 +38,7 @@ class VisJS(flx.Widget):
             updated_nodes = [
                 {
                     "id": node["id"],
-                    "color": "yellow",
+                    "color": "yellow" if colorize_updated_nodes else node.get("color"),
                 }
                 for node in data["nodes"]["update"]
             ]
@@ -48,19 +52,19 @@ class VisJS(flx.Widget):
             ]
 
             self.nodes.update(updated_nodes)
+            if colorize_updated_nodes:
+                def restore_nodes(original):
+                    def doit():
+                        self.nodes.update(original)
+                        self.restore_nodes_fct = None
+                        self.restore_nodes_timeout = None
+                    return doit
 
-            def restore_nodes(original):
-                def doit():
-                    self.nodes.update(original)
-                    self.restore_nodes_fct = None
-                    self.restore_nodes_timeout = None
-                return doit
-
-            if self.restore_nodes_timeout is not None:
-                clearTimeout(self.restore_nodes_timeout)
-                self.restore_nodes_fct()
-            self.restore_nodes_fct = restore_nodes(original_nodes)
-            self.restore_nodes_timeout = window.setTimeout(self.restore_nodes_fct, 2000)
+                if self.restore_nodes_timeout is not None:
+                    clearTimeout(self.restore_nodes_timeout)
+                    self.restore_nodes_fct()
+                self.restore_nodes_fct = restore_nodes(original_nodes)
+                self.restore_nodes_timeout = window.setTimeout(self.restore_nodes_fct, 10)
         if data["edges"]["add"]:
             self.edges.add(data["edges"]["add"])
         if data["edges"]["remove"]:
@@ -69,7 +73,7 @@ class VisJS(flx.Widget):
             updated_edges = [
                 {
                     "id": edge["id"],
-                    "color": {"color": "yellow"},
+                    "color": {"color": "yellow"} if colorize_updated_edges else edge.get("color"),
                 }
                 for edge in data["edges"]["update"]
             ]
@@ -82,16 +86,29 @@ class VisJS(flx.Widget):
                 for edge in data["edges"]["update"]
             ]
             self.edges.update(updated_edges)
-            def restore_edges(original):
-                self.edges.update(original)
-            window.setTimeout(restore_edges, 2000, original_edges)
+            if colorize_updated_edges:
+                def restore_edges(original):
+                    def doit():
+                        self.edges.update(original)
+                        self.edges.update(original)
+                        self.restore_edges_fct = None
+                        self.restore_edges_timeout = None
+                    return doit
+
+                if self.restore_edges_timeout is not None:
+                    clearTimeout(self.restore_edges_timeout)
+                    self.restore_edges_fct()
+                self.restore_edges_fct = restore_edges(original_edges)
+                self.restore_edges_timeout = window.setTimeout(self.restore_edges_fct, 10)
         if data["options"]:
             self.network.setOptions(data["options"])
+            print("redraw")
             self.network.redraw()
+        self.network.physics.startSimulation()
 
     @event.action
     def load_viz(self, data):
-        window.setTimeout(self._load_viz, 500, data)
+        window.setTimeout(self._load_viz, 200, data)
 
     def _load_viz(self, data):
         # data = vis.network.convertDot('dirnetwork { truc=machin        1 [label="trucee", a="b", color="green"];        1 -> 1 -> 2;        2 -> 3;        2 -- 4[label="truc"];        2 -> 1}')
@@ -104,12 +121,20 @@ class VisJS(flx.Widget):
         options.nodes = options.nodes or {}
         options.nodes.shape = options.nodes.shape or "dot"
         options.nodes.scaling = options.nodes.scaling or {}
+        options.nodes.scaling["max"] = 100
         #options.nodes.scaling["customScalingFunction"] = lambda min, max, total, value: value/total
 
         options.edges = options.edges or {}
         options.edges.scaling = options.edges.scaling or {}
+        options.edges.scaling["max"] = 30
         #options.edges.scaling["customScalingFunction"] = lambda min, max, total, value: value/total
 
+        options.physics = options.physics or {}
+        options.physics["solver"] = "forceAtlas2Based"
+        options.physics.forceAtlas2Based = options.physics.forceAtlas2Based or {}
+        options.physics.forceAtlas2Based["gravitationalConstant"] = -50
+        options.physics.forceAtlas2Based["damping"] = 0.2
+        options.physics.forceAtlas2Based["avoidOverlap"] = 0.8
         options.configure = options.configure or {}
         options.configure.container = options.configure.container or document.getElementsByClassName("configure")[0]
 
@@ -151,7 +176,7 @@ overflow:scroll;
                 self.previous = ui.Button(text="<-", disabled=True, flex=1)
                 self.content = ui.Label(flex=0)
                 self.next = ui.Button(text="->", disabled=True, flex=1)
-            with ui.HSplit(flex=1):
+            with ui.HSplit(flex=1, spacing=20):
                 self.configure = flx.Widget(css_class="configure", flex=0)
                 with ui.HFix(flex=1):
                     self.visjs = VisJS(
@@ -223,7 +248,12 @@ overflow:scroll;
         try:
             graph = nx.nx_agraph.read_dot(self.file)
         except ImportError:
-            graph = nx.nx_pydot.read_dot(self.file)
+            try:
+                graph = nx.nx_pydot.read_dot(self.file)
+            except TypeError:
+                print("TypeError")
+                asyncio.get_event_loop().call_later(0.1, self.refresh)
+                return
 
         def uniq_id():
             i = 0
@@ -317,13 +347,15 @@ def dotted_dict_to_nested_dict(d):
     res = {}
     recursed_keys = set()
     for key, value in d.items():
-        if "." in key:
-            short_key = key.split(".")[0]
-            recursed_keys.add(short_key)
-            remaining_key = ".".join(key.split(".")[1:])
-            if short_key not in res:
-                res[short_key] = {}
-            res[short_key][remaining_key] = value
+        for sep in ".", "_",:
+            if sep in key:
+                short_key = key.split(sep)[0]
+                recursed_keys.add(short_key)
+                remaining_key = sep.join(key.split(sep)[1:])
+                if short_key not in res:
+                    res[short_key] = {}
+                res[short_key][remaining_key] = value
+                break
         else:
             res[key] = value
     for key in recursed_keys:
