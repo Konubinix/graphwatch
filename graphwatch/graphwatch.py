@@ -133,7 +133,7 @@ class VisJS(flx.Widget):
         options.physics["solver"] = "forceAtlas2Based"
         options.physics.forceAtlas2Based = options.physics.forceAtlas2Based or {}
         options.physics.forceAtlas2Based["gravitationalConstant"] = -50
-        options.physics.forceAtlas2Based["damping"] = 0.2
+        options.physics.forceAtlas2Based["damping"] = 0.6
         options.physics.forceAtlas2Based["avoidOverlap"] = 0.8
         options.configure = options.configure or {}
         options.configure.container = options.configure.container or document.getElementsByClassName("configure")[0]
@@ -261,24 +261,24 @@ overflow:scroll;
                 yield i
                 i = i + 1
         genid = uniq_id()
-        for src in graph.nodes():
+        for src in graph.nodes:
             for dst in graph[src]:
                 for number in graph[src][dst]:
                     if "smooth.type" not in graph[src][dst][number]:
                         graph[src][dst][number]["smooth.type"] = "curvedCW"
                     if "smooth.roundness" not in graph[src][dst][number]:
                         graph[src][dst][number]["smooth.roundness"] = float(number) / 5.
-
         graph_desc = {
             "nodes": [
                 {
                     "id": node_id,
+                    "label": graph.nodes[node_id].get("label", node_id),
                     **dotted_dict_to_nested_dict({
                         k: cast_it(v)
-                        for k, v in graph.node[node_id].items()
+                        for k, v in graph.nodes[node_id].items()
                     }),
                 }
-                for node_id in graph.nodes()
+                for node_id in graph.nodes
             ],
             "edges": [
                 {
@@ -292,7 +292,7 @@ overflow:scroll;
                         for k, v in graph[src][dst][number].items()
                     }),
                 }
-                for src in graph.nodes()
+                for src in graph.nodes
                 for dst in graph[src]
                 for number in graph[src][dst]
             ],
@@ -303,6 +303,7 @@ overflow:scroll;
                 }
             )
         }
+
         gl = len(self.graph_list)
         cg = self.current_graph
         last_graph = (gl != 0 and self.graph_list[-1]) or None
@@ -368,8 +369,8 @@ def hardcoded_cast(elem):
         str(e): e
         for e in [True, False, None]
     }
-    if elem in hardcoded:
-        return hardcoded[elem]
+    if str(elem) in hardcoded:
+        return hardcoded[str(elem)]
     else:
         raise ValueError(elem)
 
@@ -387,6 +388,7 @@ def cast_it(elem):
             return caster(elem)
         except ValueError:
             pass
+
     return elem
 
 
